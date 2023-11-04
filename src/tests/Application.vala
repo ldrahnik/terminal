@@ -10,10 +10,26 @@ namespace Terminal.Test.Application {
     delegate void CommandLineCallback (ApplicationCommandLine command_line);
     delegate void ActivateCallback ();
 
-    private void setup () {
+    private GLib.Settings getSettingsWithNoContinuousSaving() {
+        GLib.Settings settings = new GLib.Settings ("io.elementary.terminal.settings");
+        settings.set_boolean ("remember-tabs", false);
+        return settings;
+    }
+
+    private GLib.Settings getSettingsWithContinousSaving() {
+        GLib.Settings settings = new GLib.Settings ("io.elementary.terminal.settings");
+        settings.set_boolean ("remember-tabs", true);
+        return settings;
+    }
+
+    private void setup (GLib.Settings ?settings = null) {
+
+        if (settings == null) {
+            Application.getSettingsWithNoContinuousSaving ();
+        }
+
         application = new Terminal.Application () {
-            application_id = "io.elementary.terminal.tests.application",
-            is_testing = true
+            application_id = "io.elementary.terminal.tests.application"
         };
 
         application.shutdown.connect (() => application.get_windows ().foreach ((win) => win.destroy ()));
@@ -48,9 +64,10 @@ namespace Terminal.Test.Application {
         }
     }
 
-    private void option (string options, string platform_data, CommandLineCallback callback) {
+    private void option (string options, string platform_data, CommandLineCallback callback, GLib.Settings ?settings = null) {
         ulong oneshot = 0;
-        setup ();
+
+        setup (settings);
 
         oneshot = application.command_line.connect ((nil) => {
             application.disconnect (oneshot);
@@ -74,9 +91,10 @@ namespace Terminal.Test.Application {
         }
     }
 
-    private void action (string name, Variant? @value, ActivateCallback callback) {
+    private void action (string name, Variant? @value, ActivateCallback callback, GLib.Settings ?settings = null) {
         ulong oneshot = 0;
-        setup ();
+
+        setup (settings);
 
         oneshot = application.command_line.connect ((nill) => {
             application.disconnect (oneshot);
@@ -155,6 +173,28 @@ namespace Terminal.Test.Application {
                 var n_tabs = (int) window.terminals.length ();
                 assert_cmpint (n_tabs, CompareOperator.EQ, 1);
             });
+
+            // continous saving below
+            option ("{'new-tab':<true>}", "@a{sv} {}", () => {
+                unowned var window = (MainWindow) application.active_window;
+                assert_nonnull (window);
+                var n_tabs = (int) window.terminals.length ();
+                assert_cmpint (n_tabs, CompareOperator.EQ, 2);
+            }, getSettingsWithContinousSaving());
+
+            option ("{'new-tab':<false>}", "@a{sv} {}", () => {
+                unowned var window = (MainWindow) application.active_window;
+                assert_nonnull (window);
+                var n_tabs = (int) window.terminals.length ();
+                assert_cmpint (n_tabs, CompareOperator.EQ, 2);
+            }, getSettingsWithContinousSaving());
+
+            option ("{'new-tab':<true>}", "@a{sv} {}", () => {
+                unowned var window = (MainWindow) application.active_window;
+                assert_nonnull (window);
+                var n_tabs = (int) window.terminals.length ();
+                assert_cmpint (n_tabs, CompareOperator.EQ, 3);
+            }, getSettingsWithContinousSaving());
         });
 
         GLib.Test.add_func ("/application/command-line/new-window", () => {
